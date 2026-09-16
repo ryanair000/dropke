@@ -1,6 +1,6 @@
 import 'server-only';
 import { currencySymbol } from '@/lib/catalog';
-import { getPublicServerClient } from '@/lib/supabase/server';
+import { getServiceClient } from '@/lib/supabase/server';
 import type { Platform, Quote, RegionCode, StockRow } from '@/types/dropke';
 
 const MAX_WALLET_CARDS = 6;
@@ -77,7 +77,9 @@ export async function buildQuote(input: {
   region: RegionCode;
   customStorePrice?: number;
 }): Promise<Quote> {
-  const supabase = getPublicServerClient();
+  // Quotes are public API responses, but all inventory reads happen through the
+  // server-only service client. Browser roles never need direct stock-RPC access.
+  const supabase = getServiceClient();
 
   const [{ data: product, error: productError }, { data: setup, error: setupError }] = await Promise.all([
     supabase
@@ -120,12 +122,20 @@ export async function buildQuote(input: {
     storeCurrency = String(price.store_currency);
   }
 
-  if (!Number.isFinite(storePrice) || storePrice <= 0) throw new Error('INVALID_STORE_PRICE');
+  if (!Number.isFinite(storePrice) || storePrice <= 0 || storePrice > 100000) {
+    throw new Error('INVALID_STORE_PRICE');
+  }
 
-  const { data, error } = await supabase.rpc('get_public_sku_stock', {
-    p_platform: input.platform,
-    p_region_code: input.region,
-  });
+  const { error: releaseError } = await supabase.rpc('release_expired_inventory');
+  if (releaseError) throw new Error(`QUOTE_RELEASE_FAILED:${releaseError.message}`);
+
+  const { data, error } = await supabase
+    .from('sku_stock')
+    .select('id,sku,platform,region_code,region_name,currency,denomination,sell_price_kes,low_stock_threshold,active,available_count,reserved_count,sold_count')
+    .eq('platform', input.platform)
+    .eq('region_code', input.region)
+    .eq('active', true)
+    .order('denomination');
   if (error) throw new Error(`QUOTE_STOCK_READ_FAILED:${error.message}`);
 
   const rows = (data ?? []) as StockRow[];
