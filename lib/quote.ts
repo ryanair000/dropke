@@ -1,6 +1,6 @@
 import 'server-only';
 import { productById, regions, walletDenominations } from '@/lib/catalog';
-import { getServiceClient } from '@/lib/supabase/server';
+import { getPublicServerClient } from '@/lib/supabase/server';
 import type { Platform, Quote, RegionCode, StockRow } from '@/types/dropke';
 
 function combinations(values: number[], maxCards = 4) {
@@ -35,9 +35,11 @@ export async function buildQuote(input: { productId: string; platform: Platform;
   if (!Number.isFinite(storePrice) || storePrice <= 0) throw new Error('INVALID_STORE_PRICE');
 
   const matched = matchWalletCredit(input.region, storePrice);
-  const supabase = getServiceClient();
-  await supabase.rpc('release_expired_inventory');
-  const { data, error } = await supabase.from('sku_stock').select('*').eq('platform', input.platform).eq('region_code', input.region).eq('active', true);
+  const supabase = getPublicServerClient();
+  const { data, error } = await supabase.rpc('get_public_sku_stock', {
+    p_platform: input.platform,
+    p_region_code: input.region,
+  });
   if (error) throw new Error(`QUOTE_STOCK_READ_FAILED:${error.message}`);
 
   const rows = (data ?? []) as StockRow[];
