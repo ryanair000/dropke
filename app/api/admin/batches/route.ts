@@ -14,7 +14,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { supabase } = await requireAdmin(request);
+    const { supabase, email } = await requireAdmin(request);
     if (!inventoryEncryptionReady()) {
       return Response.json({ error: 'Inventory encryption key is not configured' }, { status: 503 });
     }
@@ -43,6 +43,7 @@ export async function POST(request: Request) {
       p_supplier_ref: supplierRef || null,
       p_unit_cost_kes: unitCostKes,
       p_codes: unique,
+      p_actor_email: email,
     });
     if (error) {
       if (error.message.includes('ALL_CODES_DUPLICATE')) {
