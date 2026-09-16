@@ -39,7 +39,24 @@ The initial admin allowlist contains `nitradefc24p@gmail.com`. Additional admin 
 
 ## Payment status
 
-The Paystack integration is implemented, but the site remains safe when no Paystack secret is configured. Add a **test** secret first, test initialization, webhook verification and fulfilment end to end, then add a live secret only when the production domain, policies and real inventory are ready.
+Checkout is intentionally **off by default**. The Paystack integration is implemented, but no order can reserve stock until `NEXT_PUBLIC_CHECKOUT_ENABLED=true` is set. A live Paystack secret is additionally blocked until `PAYSTACK_LIVE_ENABLED=true` is set server-side.
+
+Start with a Paystack test secret, test initialization, webhook verification and fulfilment end to end, then move to live only after the production domain, policies and real inventory are ready.
+
+## Catalog warning
+
+The regional Fortnite store prices and KSh SKU prices in the current seed are operational starting values carried from the DROPKE prototype. Verify every enabled platform, region, denomination and selling price against your legitimate inventory and the current platform store before production launch.
+
+## Build
+
+Run:
+
+```bash
+npm install
+npm run build
+```
+
+See `docs/CI.md` for the current GitHub runner note.
 
 ## Important
 
