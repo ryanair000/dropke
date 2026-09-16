@@ -1,23 +1,30 @@
 export type Platform = 'PlayStation' | 'Xbox' | 'Nintendo' | 'PC';
-export type RegionCode = 'US' | 'UK' | 'ZA' | 'AE' | 'IN';
+export type RegionCode = 'US' | 'UK' | 'ZA' | 'AE' | 'IN' | 'BR';
 export type InventoryStatus = 'available' | 'reserved' | 'sold';
 export type OrderStatus = 'awaiting_payment' | 'paid_pending_fulfilment' | 'delivered' | 'cancelled';
 export type PaymentStatus = 'pending' | 'success' | 'failed';
-
-export type RegionMeta = {
-  code: RegionCode;
-  name: string;
-  currency: string;
-  symbol: string;
-};
+export type ProductKind = 'vbucks' | 'crew' | 'pack' | 'custom';
 
 export type ProductDefinition = {
   id: string;
   name: string;
   shortName: string;
   description: string;
-  kind: 'vbucks' | 'crew' | 'pack' | 'custom';
-  storePrices?: Record<RegionCode, number>;
+  kind: ProductKind;
+  vbucksAmount?: number;
+};
+
+export type PlatformRegion = {
+  platform: Platform;
+  region: RegionCode;
+  regionName: string;
+  storeCurrency: string;
+  walletCurrency: string;
+};
+
+export type PublicCatalog = {
+  products: ProductDefinition[];
+  setups: PlatformRegion[];
 };
 
 export type QuoteSku = {
@@ -35,6 +42,7 @@ export type Quote = {
   regionName: string;
   currency: string;
   currencySymbol: string;
+  walletCurrency: string;
   storePrice: number;
   matchedCredit: number;
   balanceRemaining: number;
