@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vercel/
+coverage/
+*.pem
+*.key
+inventory-export*.csv
+inventory-export*.txt
