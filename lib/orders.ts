@@ -5,7 +5,7 @@ import { buildQuote } from '@/lib/quote';
 import { getServiceClient } from '@/lib/supabase/server';
 import type { Platform, PublicOrder, Quote, RegionCode } from '@/types/dropke';
 
-function makeOrderRef() { return `DRP-${randomBytes(6).toString('hex').toUpperCase()}`; }
+function makeOrderRef() { return `DRP-${randomBytes(8).toString('hex').toUpperCase()}`; }
 function normalizePhone(value: string) { return value.replace(/\s+/g, '').trim(); }
 function contactMatches(order: { email: string; phone: string }, contact: string) {
   const normalized = contact.trim().toLowerCase();
@@ -15,25 +15,11 @@ function contactMatches(order: { email: string; phone: string }, contact: string
 async function hydrateOrder(order: any): Promise<PublicOrder> {
   const { data } = await getServiceClient().from('inventory_codes').select('ciphertext,iv,tag').eq('order_ref', order.ref).eq('status', 'sold').order('sold_at');
   const codes = (data ?? []).map((record) => decryptInventoryCode(record));
-  return {
-    ref: order.ref,
-    productName: order.product_name,
-    platform: order.platform,
-    regionName: order.region_name,
-    currency: order.currency,
-    storePrice: Number(order.store_price),
-    matchedCredit: Number(order.matched_credit),
-    balanceRemaining: Number(order.balance_remaining),
-    kesPrice: Number(order.kes_price),
-    status: order.status,
-    paymentStatus: order.payment_status,
-    createdAt: order.created_at,
-    deliveredAt: order.delivered_at ?? undefined,
-    codes: codes.length ? codes : undefined,
-  };
+  return { ref: order.ref, productName: order.product_name, platform: order.platform, regionName: order.region_name, currency: order.currency, storePrice: Number(order.store_price), matchedCredit: Number(order.matched_credit), balanceRemaining: Number(order.balance_remaining), kesPrice: Number(order.kes_price), status: order.status, paymentStatus: order.payment_status, createdAt: order.created_at, deliveredAt: order.delivered_at ?? undefined, codes: codes.length ? codes : undefined };
 }
 
 export async function createOrder(input: { productId: string; platform: Platform; region: RegionCode; customStorePrice?: number; email: string; phone: string }) {
+  if (process.env.NEXT_PUBLIC_CHECKOUT_ENABLED !== 'true') throw new Error('CHECKOUT_DISABLED');
   const email = input.email.trim().toLowerCase();
   const phone = normalizePhone(input.phone);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('INVALID_EMAIL');

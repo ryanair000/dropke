@@ -16,14 +16,9 @@ Customers can retrieve delivered codes only with the DROPKE order reference plus
 
 ## Payments
 
-Paystack payment success is accepted only after server-side verification of:
+Checkout is blocked by default. `NEXT_PUBLIC_CHECKOUT_ENABLED=true` must be set before an order can reserve inventory. A Paystack test key can then initialize checkout. A live Paystack key additionally requires `PAYSTACK_LIVE_ENABLED=true` on the server.
 
-- transaction status
-- DROPKE order reference
-- amount in minor units
-- KES currency
-
-Webhook signatures are checked using HMAC-SHA512.
+Paystack payment success is accepted only after server-side verification of transaction status, DROPKE order reference, amount in minor units and KES currency. Webhook signatures are checked using HMAC-SHA512.
 
 ## Repository hygiene
 

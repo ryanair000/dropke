@@ -13,7 +13,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
       - run: npm install
       - run: npm run build
         env:
@@ -23,3 +22,4 @@ jobs:
           INVENTORY_ENCRYPTION_KEY: ci-only-placeholder-key-with-more-than-24-characters
           NEXT_PUBLIC_SITE_URL: http://localhost:3000
           NEXT_PUBLIC_CHECKOUT_ENABLED: 'false'
+          PAYSTACK_LIVE_ENABLED: 'false'
