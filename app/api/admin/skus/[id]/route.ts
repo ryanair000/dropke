@@ -3,7 +3,7 @@ import { adminAuthResponse, requireAdmin } from '@/lib/auth';
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { supabase } = await requireAdmin(request);
+    const { supabase, email } = await requireAdmin(request);
     const body = await request.json();
     const sellPriceKes = Number(body.sellPriceKes);
     const lowStockThreshold = Number(body.lowStockThreshold);
@@ -14,6 +14,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       p_id: id,
       p_sell_price_kes: Math.round(sellPriceKes),
       p_low_stock_threshold: lowStockThreshold,
+      p_actor_email: email,
     });
     if (error) throw error;
     return Response.json(data?.[0] ?? null);
