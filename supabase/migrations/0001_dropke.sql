@@ -1,16 +1,8 @@
 create extension if not exists pgcrypto;
 
-do $$ begin
-  create type inventory_status as enum ('available', 'reserved', 'sold');
-exception when duplicate_object then null; end $$;
-
-do $$ begin
-  create type order_status as enum ('awaiting_payment', 'paid_pending_fulfilment', 'delivered', 'cancelled');
-exception when duplicate_object then null; end $$;
-
-do $$ begin
-  create type payment_status as enum ('pending', 'success', 'failed');
-exception when duplicate_object then null; end $$;
+do $$ begin create type inventory_status as enum ('available', 'reserved', 'sold'); exception when duplicate_object then null; end $$;
+do $$ begin create type order_status as enum ('awaiting_payment', 'paid_pending_fulfilment', 'delivered', 'cancelled'); exception when duplicate_object then null; end $$;
+do $$ begin create type payment_status as enum ('pending', 'success', 'failed'); exception when duplicate_object then null; end $$;
 
 create table if not exists gift_card_skus (
   id uuid primary key default gen_random_uuid(),
@@ -104,84 +96,51 @@ create table if not exists audit_logs (
 );
 
 create or replace view sku_stock as
-select
-  s.*,
-  count(c.id) filter (where c.status = 'available')::int as available_count,
+select s.*, count(c.id) filter (where c.status = 'available')::int as available_count,
   count(c.id) filter (where c.status = 'reserved')::int as reserved_count,
   count(c.id) filter (where c.status = 'sold')::int as sold_count
-from gift_card_skus s
-left join inventory_codes c on c.sku_id = s.id
-group by s.id;
+from gift_card_skus s left join inventory_codes c on c.sku_id = s.id group by s.id;
 
-create or replace function release_expired_inventory()
-returns integer
-language plpgsql
-security definer
-as $$
+create or replace function release_expired_inventory() returns integer language plpgsql security definer as $$
 declare changed integer;
 begin
-  update inventory_codes
-  set status = 'available', order_ref = null, reserved_at = null, reservation_expires_at = null
+  update inventory_codes set status = 'available', order_ref = null, reserved_at = null, reservation_expires_at = null
   where status = 'reserved' and reservation_expires_at < now();
   get diagnostics changed = row_count;
   return changed;
-end;
-$$;
+end; $$;
 
 create or replace function reserve_inventory(p_order_ref text, p_sku_ids uuid[], p_expires_at timestamptz)
-returns boolean
-language plpgsql
-security definer
-as $$
+returns boolean language plpgsql security definer as $$
 declare wanted uuid; chosen uuid;
 begin
   perform release_expired_inventory();
   foreach wanted in array p_sku_ids loop
-    select id into chosen
-    from inventory_codes
-    where sku_id = wanted and status = 'available'
-    order by created_at
-    for update skip locked
-    limit 1;
-    if chosen is null then
-      raise exception 'OUT_OF_STOCK';
-    end if;
-    update inventory_codes
-    set status = 'reserved', order_ref = p_order_ref, reserved_at = now(), reservation_expires_at = p_expires_at
-    where id = chosen;
+    select id into chosen from inventory_codes where sku_id = wanted and status = 'available'
+    order by created_at for update skip locked limit 1;
+    if chosen is null then raise exception 'OUT_OF_STOCK'; end if;
+    update inventory_codes set status = 'reserved', order_ref = p_order_ref, reserved_at = now(), reservation_expires_at = p_expires_at where id = chosen;
   end loop;
   return true;
-end;
-$$;
+end; $$;
 
-create or replace function release_order_inventory(p_order_ref text)
-returns integer
-language plpgsql
-security definer
-as $$
+create or replace function release_order_inventory(p_order_ref text) returns integer language plpgsql security definer as $$
 declare changed integer;
 begin
-  update inventory_codes
-  set status = 'available', order_ref = null, reserved_at = null, reservation_expires_at = null
+  update inventory_codes set status = 'available', order_ref = null, reserved_at = null, reservation_expires_at = null
   where status = 'reserved' and order_ref = p_order_ref;
   get diagnostics changed = row_count;
   return changed;
-end;
-$$;
+end; $$;
 
 create or replace function finalize_inventory(p_order_ref text)
 returns table(id uuid, sku_id uuid, ciphertext text, iv text, tag text, hint text)
-language plpgsql
-security definer
-as $$
+language plpgsql security definer as $$
 begin
-  return query
-  update inventory_codes
-  set status = 'sold', sold_at = now(), reserved_at = null, reservation_expires_at = null
+  return query update inventory_codes set status = 'sold', sold_at = now(), reserved_at = null, reservation_expires_at = null
   where status = 'reserved' and order_ref = p_order_ref
   returning inventory_codes.id, inventory_codes.sku_id, inventory_codes.ciphertext, inventory_codes.iv, inventory_codes.tag, inventory_codes.hint;
-end;
-$$;
+end; $$;
 
 revoke all on function release_expired_inventory() from public;
 revoke all on function reserve_inventory(text, uuid[], timestamptz) from public;
@@ -199,24 +158,17 @@ alter table order_items enable row level security;
 alter table inventory_codes enable row level security;
 alter table audit_logs enable row level security;
 
+with platforms(code, name) as (
+  values ('PS','PlayStation'),('XB','Xbox'),('NS','Nintendo'),('PC','PC')
+), seed(region_code, region_name, currency, denomination, sell_price_kes) as (
+  values
+    ('US','USA','USD',10,1650),('US','USA','USD',25,3900),('US','USA','USD',50,7600),('US','USA','USD',100,14800),
+    ('UK','United Kingdom','GBP',10,1900),('UK','United Kingdom','GBP',20,3700),('UK','United Kingdom','GBP',50,9000),('UK','United Kingdom','GBP',100,17500),
+    ('ZA','South Africa','ZAR',100,700),('ZA','South Africa','ZAR',250,2100),('ZA','South Africa','ZAR',500,3900),('ZA','South Africa','ZAR',1000,9800),
+    ('AE','UAE','AED',50,2100),('AE','UAE','AED',100,4000),('AE','UAE','AED',200,7800),('AE','UAE','AED',400,15200),
+    ('IN','India','INR',500,950),('IN','India','INR',1000,1800),('IN','India','INR',2000,3500),('IN','India','INR',5000,8500)
+)
 insert into gift_card_skus (sku, platform, region_code, region_name, currency, denomination, sell_price_kes)
-values
-  ('PS-ZA-100','PlayStation','ZA','South Africa','ZAR',100,700),
-  ('PS-ZA-250','PlayStation','ZA','South Africa','ZAR',250,2100),
-  ('PS-ZA-500','PlayStation','ZA','South Africa','ZAR',500,3900),
-  ('PS-ZA-1000','PlayStation','ZA','South Africa','ZAR',1000,9800),
-  ('XB-ZA-100','Xbox','ZA','South Africa','ZAR',100,700),
-  ('XB-ZA-250','Xbox','ZA','South Africa','ZAR',250,2100),
-  ('XB-ZA-500','Xbox','ZA','South Africa','ZAR',500,3900),
-  ('XB-ZA-1000','Xbox','ZA','South Africa','ZAR',1000,9800),
-  ('NS-ZA-100','Nintendo','ZA','South Africa','ZAR',100,700),
-  ('NS-ZA-250','Nintendo','ZA','South Africa','ZAR',250,2100),
-  ('NS-ZA-500','Nintendo','ZA','South Africa','ZAR',500,3900),
-  ('NS-ZA-1000','Nintendo','ZA','South Africa','ZAR',1000,9800),
-  ('PC-ZA-100','PC','ZA','South Africa','ZAR',100,700),
-  ('PC-ZA-250','PC','ZA','South Africa','ZAR',250,2100),
-  ('PC-ZA-500','PC','ZA','South Africa','ZAR',500,3900),
-  ('PC-ZA-1000','PC','ZA','South Africa','ZAR',1000,9800)
+select p.code || '-' || s.region_code || '-' || s.denomination::text, p.name, s.region_code, s.region_name, s.currency, s.denomination, s.sell_price_kes
+from platforms p cross join seed s
 on conflict (sku) do nothing;
-
--- Add US/UK/UAE/India SKUs through the admin/database once supplier denominations are verified.

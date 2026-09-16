@@ -1,0 +1,79 @@
+export type Platform = 'PlayStation' | 'Xbox' | 'Nintendo' | 'PC';
+export type RegionCode = 'US' | 'UK' | 'ZA' | 'AE' | 'IN';
+export type InventoryStatus = 'available' | 'reserved' | 'sold';
+export type OrderStatus = 'awaiting_payment' | 'paid_pending_fulfilment' | 'delivered' | 'cancelled';
+export type PaymentStatus = 'pending' | 'success' | 'failed';
+
+export type RegionMeta = {
+  code: RegionCode;
+  name: string;
+  currency: string;
+  symbol: string;
+};
+
+export type ProductDefinition = {
+  id: string;
+  name: string;
+  shortName: string;
+  description: string;
+  kind: 'vbucks' | 'crew' | 'pack' | 'custom';
+  storePrices?: Record<RegionCode, number>;
+};
+
+export type QuoteSku = {
+  skuId: string;
+  sku: string;
+  denomination: number;
+  sellPriceKes: number;
+};
+
+export type Quote = {
+  productId: string;
+  productName: string;
+  platform: Platform;
+  region: RegionCode;
+  regionName: string;
+  currency: string;
+  currencySymbol: string;
+  storePrice: number;
+  matchedCredit: number;
+  balanceRemaining: number;
+  kesPrice: number;
+  creditLabel: string;
+  cardBreakdown: string[];
+  skuSelections: QuoteSku[];
+  soldOut: boolean;
+};
+
+export type PublicOrder = {
+  ref: string;
+  productName: string;
+  platform: Platform;
+  regionName: string;
+  currency: string;
+  storePrice: number;
+  matchedCredit: number;
+  balanceRemaining: number;
+  kesPrice: number;
+  status: OrderStatus;
+  paymentStatus: PaymentStatus;
+  createdAt: string;
+  deliveredAt?: string;
+  codes?: string[];
+};
+
+export type StockRow = {
+  id: string;
+  sku: string;
+  platform: Platform;
+  region_code: RegionCode;
+  region_name: string;
+  currency: string;
+  denomination: number | string;
+  sell_price_kes: number;
+  low_stock_threshold: number;
+  active: boolean;
+  available_count: number;
+  reserved_count: number;
+  sold_count: number;
+};
