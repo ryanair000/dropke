@@ -1,1 +1,0 @@
-Do not merge and deploy Production V2 until the Vercel environment contains a working SUPABASE_SERVICE_ROLE_KEY and the admin service-boundary cutover sequence in docs/SECURITY-CUTOVER.md has been followed.
