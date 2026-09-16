@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { adminAuthResponse, requireAdmin } from '@/lib/auth';
 import { writeAudit } from '@/lib/audit';
 import { encryptInventoryCode, inventoryEncryptionReady } from '@/lib/crypto';
-import { getServiceClient } from '@/lib/db';
+import { getServiceClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 

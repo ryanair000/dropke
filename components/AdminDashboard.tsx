@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Boxes, KeyRound, LockKeyhole, LogOut, PackagePlus, RefreshCw, ShieldCheck, ShoppingBag } from 'lucide-react';
-import { getBrowserSupabase } from '@/lib/db';
-import { OWNER_ADMIN_EMAIL } from '@/lib/auth';
+import { OWNER_ADMIN_EMAIL } from '@/lib/config';
+import { getBrowserSupabase } from '@/lib/supabase/browser';
 
 async function api<T>(path: string, token: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { ...init, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
@@ -35,61 +35,41 @@ export default function AdminDashboard() {
   const [unitCost, setUnitCost] = useState('');
   const [codes, setCodes] = useState('');
   const [busy, setBusy] = useState(false);
-
   const selected = useMemo(() => stock.find((item) => item.id === selectedId) ?? null, [stock, selectedId]);
 
   useEffect(() => {
     try {
       const supabase = getBrowserSupabase();
-      supabase.auth.getSession().then(({ data }) => {
-        if (data.session?.access_token) setToken(data.session.access_token);
-      });
+      supabase.auth.getSession().then(({ data }) => { if (data.session?.access_token) setToken(data.session.access_token); });
       const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => setToken(session?.access_token ?? ''));
       return () => listener.subscription.unsubscribe();
-    } catch {
-      setMessage('Supabase browser authentication is not configured yet.');
-    }
+    } catch { setMessage('Supabase browser authentication is not configured yet.'); }
   }, []);
-
   useEffect(() => { if (token) loadAll(); }, [token]);
   useEffect(() => { if (selected) { setPrice(String(selected.sell_price_kes)); setThreshold(String(selected.low_stock_threshold)); } }, [selected]);
 
   async function sendMagicLink(event: React.FormEvent) {
     event.preventDefault(); setMessage('');
     try {
-      const supabase = getBrowserSupabase();
-      const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: `${window.location.origin}/admin` } });
+      const { error } = await getBrowserSupabase().auth.signInWithOtp({ email, options: { emailRedirectTo: `${window.location.origin}/admin` } });
       if (error) throw error;
       setMessage('Magic sign-in link sent. Check your email.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not send sign-in link.'); }
   }
-
-  async function signOut() {
-    const supabase = getBrowserSupabase();
-    await supabase.auth.signOut();
-    setToken(''); setSummary(null); setStock([]); setBatches([]); setOrders([]); setAudit([]);
-  }
-
+  async function signOut() { await getBrowserSupabase().auth.signOut(); setToken(''); setSummary(null); setStock([]); setBatches([]); setOrders([]); setAudit([]); }
   async function loadAll() {
     setBusy(true); setMessage('');
     try {
-      const [nextSummary, nextStock, nextBatches, nextOrders, nextAudit] = await Promise.all([
-        api<Summary>('/api/admin/summary', token), api<Stock[]>('/api/admin/inventory', token), api<Batch[]>('/api/admin/batches', token), api<Order[]>('/api/admin/orders', token), api<Audit[]>('/api/admin/audit', token),
-      ]);
+      const [nextSummary, nextStock, nextBatches, nextOrders, nextAudit] = await Promise.all([api<Summary>('/api/admin/summary', token), api<Stock[]>('/api/admin/inventory', token), api<Batch[]>('/api/admin/batches', token), api<Order[]>('/api/admin/orders', token), api<Audit[]>('/api/admin/audit', token)]);
       setSummary(nextSummary); setStock(nextStock); setBatches(nextBatches); setOrders(nextOrders); setAudit(nextAudit);
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not load admin.'); }
     finally { setBusy(false); }
   }
-
   async function saveSku() {
-    if (!selected) return;
-    setBusy(true); setMessage('');
-    try {
-      await api(`/api/admin/skus/${selected.id}`, token, { method: 'PUT', body: JSON.stringify({ sellPriceKes: Number(price), lowStockThreshold: Number(threshold) }) });
-      setMessage(`${selected.sku} updated.`); await loadAll();
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not update SKU.'); setBusy(false); }
+    if (!selected) return; setBusy(true); setMessage('');
+    try { await api(`/api/admin/skus/${selected.id}`, token, { method: 'PUT', body: JSON.stringify({ sellPriceKes: Number(price), lowStockThreshold: Number(threshold) }) }); setMessage(`${selected.sku} updated.`); await loadAll(); }
+    catch (error) { setMessage(error instanceof Error ? error.message : 'Could not update SKU.'); setBusy(false); }
   }
-
   async function addBatch() {
     if (!selected) return;
     const values = codes.split(/\n+/).map((value) => value.trim()).filter(Boolean);

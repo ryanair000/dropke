@@ -1,5 +1,5 @@
 import { adminAuthResponse, requireAdmin } from '@/lib/auth';
-import { getServiceClient } from '@/lib/db';
+import { getServiceClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
