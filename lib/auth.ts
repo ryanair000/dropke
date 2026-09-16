@@ -1,6 +1,5 @@
 import 'server-only';
-import { OWNER_ADMIN_EMAIL } from '@/lib/config';
-import { getServiceClient } from '@/lib/supabase/server';
+import { getAuthenticatedServerClient } from '@/lib/supabase/server';
 
 export class AdminAuthError extends Error {
   status: number;
@@ -10,27 +9,24 @@ export class AdminAuthError extends Error {
   }
 }
 
-function adminAllowlist() {
-  const extras = (process.env.DROPKE_ADMIN_EMAILS ?? '')
-    .split(',')
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
-  return new Set([OWNER_ADMIN_EMAIL, ...extras]);
-}
-
 export async function requireAdmin(request: Request) {
   const header = request.headers.get('authorization') ?? '';
   const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
   if (!token) throw new AdminAuthError('Sign in required', 401);
 
-  const { data, error } = await getServiceClient().auth.getUser(token);
+  const supabase = getAuthenticatedServerClient(request);
+  const { data, error } = await supabase.auth.getUser(token);
   if (error || !data.user) throw new AdminAuthError('Invalid or expired admin session', 401);
 
   const email = data.user.email?.toLowerCase();
-  if (!email || !adminAllowlist().has(email)) {
+  if (!email) throw new AdminAuthError('Admin account has no verified email', 403);
+
+  const { data: allowed, error: allowError } = await supabase.rpc('is_dropke_admin');
+  if (allowError || allowed !== true) {
     throw new AdminAuthError('This account is not authorized for DROPKE admin', 403);
   }
-  return { userId: data.user.id, email };
+
+  return { userId: data.user.id, email, supabase };
 }
 
 export function adminAuthResponse(reason: unknown) {
