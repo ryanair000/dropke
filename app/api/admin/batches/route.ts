@@ -24,8 +24,8 @@ export async function POST(request: Request) {
     const supplierName = String(body.supplierName ?? '').trim();
     const supplierRef = String(body.supplierRef ?? '').trim();
     const unitCostKes = Number(body.unitCostKes);
-    const rawCodes = Array.isArray(body.codes)
-      ? body.codes.map((value: unknown) => String(value).trim()).filter(Boolean).slice(0, 500)
+    const rawCodes: string[] = Array.isArray(body.codes)
+      ? body.codes.map((value: unknown) => String(value).trim()).filter((value: string) => Boolean(value)).slice(0, 500)
       : [];
 
     if (!skuId || !supplierName || !rawCodes.length || !Number.isFinite(unitCostKes) || unitCostKes < 0) {
