@@ -77,8 +77,8 @@ export async function buildQuote(input: {
   region: RegionCode;
   customStorePrice?: number;
 }): Promise<Quote> {
-  // Quotes are public API responses, but all inventory reads happen through the
-  // server-only service client. Browser roles never need direct stock-RPC access.
+  // Quotes are public API responses, but inventory reads happen through the
+  // server-only service client. Browser roles never receive inventory access.
   const supabase = getServiceClient();
 
   const [{ data: product, error: productError }, { data: setup, error: setupError }] = await Promise.all([
@@ -104,6 +104,7 @@ export async function buildQuote(input: {
 
   let storePrice: number;
   let storeCurrency = String(setup.store_currency);
+  const walletCurrency = String(setup.wallet_currency);
 
   if (product.kind === 'custom') {
     storePrice = Number(input.customStorePrice);
@@ -126,6 +127,13 @@ export async function buildQuote(input: {
     throw new Error('INVALID_STORE_PRICE');
   }
 
+  // V2 currently routes wallet value only when the storefront and wallet use
+  // the same currency. If a future region requires FX conversion, that must be
+  // an explicit pricing rule rather than an accidental denomination match.
+  if (storeCurrency !== walletCurrency) {
+    throw new Error('CURRENCY_ROUTE_NOT_CONFIGURED');
+  }
+
   const { error: releaseError } = await supabase.rpc('release_expired_inventory');
   if (releaseError) throw new Error(`QUOTE_RELEASE_FAILED:${releaseError.message}`);
 
@@ -134,6 +142,7 @@ export async function buildQuote(input: {
     .select('id,sku,platform,region_code,region_name,currency,denomination,sell_price_kes,low_stock_threshold,active,available_count,reserved_count,sold_count')
     .eq('platform', input.platform)
     .eq('region_code', input.region)
+    .eq('currency', walletCurrency)
     .eq('active', true)
     .order('denomination');
   if (error) throw new Error(`QUOTE_STOCK_READ_FAILED:${error.message}`);
@@ -141,7 +150,6 @@ export async function buildQuote(input: {
   const rows = (data ?? []) as StockRow[];
   const route = chooseWalletRoute(rows, storePrice);
   const storeSymbol = currencySymbol(storeCurrency);
-  const walletCurrency = String(setup.wallet_currency);
   const walletSymbol = currencySymbol(walletCurrency);
 
   if (!route) {
