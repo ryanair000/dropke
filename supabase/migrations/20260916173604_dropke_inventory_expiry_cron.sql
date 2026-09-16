@@ -1,0 +1,3 @@
+-- Historical production migration marker.
+-- The resulting cron state is reproduced idempotently by the preceding operations migration.
+-- This file exists so repository migration versions match the live Supabase migration ledger.
