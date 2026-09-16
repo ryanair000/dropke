@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ArrowLeft, KeyRound, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Mail, ShieldCheck } from 'lucide-react';
 import AdminDashboard from '@/components/AdminDashboard';
 import { OWNER_ADMIN_EMAIL } from '@/lib/config';
 import { getBrowserSupabase } from '@/lib/supabase/browser';
@@ -9,8 +9,6 @@ import { getBrowserSupabase } from '@/lib/supabase/browser';
 export default function AdminAccess() {
   const [ready, setReady] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
-  const [mode, setMode] = useState<'signin' | 'setup'>('signin');
-  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -38,34 +36,21 @@ export default function AdminAccess() {
     }
   }, []);
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    setMessage('');
-    if (password.length < 12) {
-      setMessage('Use at least 12 characters for the admin password.');
-      return;
-    }
+  async function sendSecureLink() {
     setBusy(true);
+    setMessage('');
     try {
-      const supabase = getBrowserSupabase();
-      if (mode === 'signin') {
-        const { error } = await supabase.auth.signInWithPassword({ email: OWNER_ADMIN_EMAIL, password });
-        if (error) throw error;
-      } else {
-        const { data, error } = await supabase.auth.signUp({
-          email: OWNER_ADMIN_EMAIL,
-          password,
-          options: { emailRedirectTo: `${window.location.origin}/admin` },
-        });
-        if (error) throw error;
-        if (!data.session) {
-          setPassword('');
-          setMode('signin');
-          setMessage('Admin account created. Confirm the email Supabase sends you, then return here and sign in.');
-        }
-      }
+      const { error } = await getBrowserSupabase().auth.signInWithOtp({
+        email: OWNER_ADMIN_EMAIL,
+        options: {
+          emailRedirectTo: `${window.location.origin}/admin`,
+          shouldCreateUser: true,
+        },
+      });
+      if (error) throw error;
+      setMessage('Secure sign-in link sent to the owner email. Open that email to continue.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Admin sign-in failed.');
+      setMessage(error instanceof Error ? error.message : 'Could not send the secure sign-in link.');
     } finally {
       setBusy(false);
     }
@@ -82,20 +67,11 @@ export default function AdminAccess() {
       <section>
         <ShieldCheck size={44} />
         <p className="eyebrow dark">DROPKE ADMIN</p>
-        <h1>{mode === 'signin' ? 'Secure sign in' : 'First-time admin setup'}</h1>
-        <p>Only the allowlisted owner account can open inventory, pricing, order and audit controls.</p>
+        <h1>Secure owner access</h1>
+        <p>Inventory, pricing, orders and audit data are available only after Supabase verifies the allowlisted owner email.</p>
         <div className="admin-security-row"><span>Authorized email</span><strong>{OWNER_ADMIN_EMAIL}</strong></div>
-        <form onSubmit={submit}>
-          <label>
-            <span>Admin password</span>
-            <input type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} value={password} onChange={(event) => setPassword(event.target.value)} minLength={12} required />
-          </label>
-          <button disabled={busy}><KeyRound size={16} /> {busy ? 'PLEASE WAIT…' : mode === 'signin' ? 'SIGN IN' : 'CREATE ADMIN ACCESS'}</button>
-        </form>
+        <button type="button" disabled={busy} onClick={sendSecureLink}><Mail size={16} /> {busy ? 'SENDING…' : 'EMAIL SECURE SIGN-IN LINK'}</button>
         {message && <div className="admin-message">{message}</div>}
-        <button className="admin-mode-switch" type="button" onClick={() => { setMode(mode === 'signin' ? 'setup' : 'signin'); setMessage(''); setPassword(''); }}>
-          {mode === 'signin' ? 'First time here? Create admin access' : 'Already set up? Sign in instead'}
-        </button>
         <a href="/"><ArrowLeft size={15} /> Return to store</a>
       </section>
     </main>
