@@ -13,7 +13,7 @@ function contactMatches(order: { email: string; phone: string }, contact: string
 }
 
 async function hydrateOrder(order: any): Promise<PublicOrder> {
-  const { data } = await getServiceClient().from('inventory_codes').select('ciphertext,iv,tag').eq('order_ref', order.ref).eq('status', 'sold').order('sold_at');
+  const { data } = await getServiceClient().from('inventory_codes').select('ciphertext,iv,tag,key_version').eq('order_ref', order.ref).eq('status', 'sold').order('sold_at');
   const codes = (data ?? []).map((record) => decryptInventoryCode(record));
   return { ref: order.ref, productName: order.product_name, platform: order.platform, regionName: order.region_name, currency: order.currency, storePrice: Number(order.store_price), matchedCredit: Number(order.matched_credit), balanceRemaining: Number(order.balance_remaining), kesPrice: Number(order.kes_price), status: order.status, paymentStatus: order.payment_status, createdAt: order.created_at, deliveredAt: order.delivered_at ?? undefined, codes: codes.length ? codes : undefined };
 }
