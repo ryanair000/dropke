@@ -7,19 +7,30 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const { supabase } = await requireAdmin(request);
-    const { data, error } = await supabase.rpc('admin_summary');
-    if (error) throw error;
-    const row = data?.[0] ?? {};
+    const { error: releaseError } = await supabase.rpc('release_expired_inventory');
+    if (releaseError) throw releaseError;
+
+    const [{ data: stock, error: stockError }, { data: orders, error: ordersError }] = await Promise.all([
+      supabase.from('sku_stock').select('available_count,reserved_count,sold_count,low_stock_threshold'),
+      supabase.from('orders').select('status'),
+    ]);
+    if (stockError) throw stockError;
+    if (ordersError) throw ordersError;
+
+    const rows = stock ?? [];
+    const orderRows = orders ?? [];
     return Response.json({
-      skuCount: Number(row.sku_count ?? 0),
-      available: Number(row.available ?? 0),
-      reserved: Number(row.reserved ?? 0),
-      sold: Number(row.sold ?? 0),
-      lowStock: Number(row.low_stock ?? 0),
-      orderCount: Number(row.order_count ?? 0),
-      paidPending: Number(row.paid_pending ?? 0),
+      skuCount: rows.length,
+      available: rows.reduce((sum, row) => sum + Number(row.available_count ?? 0), 0),
+      reserved: rows.reduce((sum, row) => sum + Number(row.reserved_count ?? 0), 0),
+      sold: rows.reduce((sum, row) => sum + Number(row.sold_count ?? 0), 0),
+      lowStock: rows.filter((row) => Number(row.available_count ?? 0) <= Number(row.low_stock_threshold ?? 0)).length,
+      orderCount: orderRows.length,
+      paidPending: orderRows.filter((order) => order.status === 'paid_pending_fulfilment').length,
       encryptionReady: inventoryEncryptionReady(),
       paystackMode: paystackMode(),
-    });
-  } catch (error) { return adminAuthResponse(error); }
+    }, { headers: { 'Cache-Control': 'no-store' } });
+  } catch (error) {
+    return adminAuthResponse(error);
+  }
 }

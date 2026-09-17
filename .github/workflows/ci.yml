@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main, production-v2-foundation]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_CHECKOUT_ENABLED: 'false'
+      PAYSTACK_LIVE_ENABLED: 'false'
+      NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co'
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'sb_publishable_ci_placeholder'
+      NEXT_PUBLIC_SITE_URL: 'http://localhost:3000'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        run: npm install
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Build
+        run: npm run build
+      - name: Audit high severity vulnerabilities
+        run: npm audit --audit-level=high

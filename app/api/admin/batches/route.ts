@@ -6,15 +6,21 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const { supabase } = await requireAdmin(request);
-    const { data, error } = await supabase.rpc('admin_batches', { p_limit: 100 });
+    const { data, error } = await supabase
+      .from('supplier_batches')
+      .select('id,batch_ref,sku_id,supplier_name,supplier_ref,unit_cost_kes,quantity,created_by,created_at')
+      .order('created_at', { ascending: false })
+      .limit(100);
     if (error) throw error;
-    return Response.json(data ?? []);
-  } catch (error) { return adminAuthResponse(error); }
+    return Response.json(data ?? [], { headers: { 'Cache-Control': 'no-store' } });
+  } catch (error) {
+    return adminAuthResponse(error);
+  }
 }
 
 export async function POST(request: Request) {
   try {
-    const { supabase } = await requireAdmin(request);
+    const { supabase, email } = await requireAdmin(request);
     if (!inventoryEncryptionReady()) {
       return Response.json({ error: 'Inventory encryption key is not configured' }, { status: 503 });
     }
@@ -43,6 +49,7 @@ export async function POST(request: Request) {
       p_supplier_ref: supplierRef || null,
       p_unit_cost_kes: unitCostKes,
       p_codes: unique,
+      p_actor_email: email,
     });
     if (error) {
       if (error.message.includes('ALL_CODES_DUPLICATE')) {
@@ -53,5 +60,7 @@ export async function POST(request: Request) {
 
     const result = data?.[0];
     return Response.json({ batchRef: result?.batch_ref, quantity: Number(result?.quantity ?? 0) }, { status: 201 });
-  } catch (error) { return adminAuthResponse(error); }
+  } catch (error) {
+    return adminAuthResponse(error);
+  }
 }
