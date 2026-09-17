@@ -10,16 +10,20 @@
 - Moved quote inventory reads behind the server boundary.
 - Reworked the quote matcher to optimize in-stock KSh price first, then overage, then card count.
 - Added explicit store-currency/wallet-currency modeling and a same-currency quote guard.
+- Added inventory encryption key versioning and separate encryption/fingerprint key derivation in server code.
+- Added the pricing-feed product foreign-key index to production Supabase.
+- Blocked Paystack initialization for expired or already-processed reservations.
+- Changed Paystack webhook failures to return retryable 5xx responses instead of silently acknowledging failures.
 - Prepared server-only admin authorization and the final service-role RPC cutover migration.
 - Restored CI configuration, although GitHub-hosted runners are currently failing before runner assignment on this repository.
 
 ## Intentionally not activated yet
 
 - Final admin service-role database cutover
-- Real inventory encryption key
+- Real inventory encryption secret in Vercel
 - Real redeemable inventory
 - Checkout
 - Paystack live mode
 - SEO indexing
 
-These remain gated until the matching deployment secrets and preview checks are complete.
+These remain gated until the matching application deployment and deployment secrets are verified.
