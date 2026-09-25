@@ -72,7 +72,7 @@ export default function AdminAccess() {
         <p>Inventory, pricing, orders and audit data are available only after Supabase verifies the allowlisted owner email.</p>
         <label className="field"><span>Authorized admin email</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
         <button type="button" disabled={busy} onClick={sendSecureLink}><Mail size={16} /> {busy ? 'SENDING…' : 'EMAIL SECURE SIGN-IN LINK'}</button>
-        {message && <div className="admin-message">{message}</div>}
+        {message && <div className="admin-message" role="status" aria-live="polite">{message}</div>}
         <a href="/"><ArrowLeft size={15} /> Return to store</a>
       </section>
     </main>
