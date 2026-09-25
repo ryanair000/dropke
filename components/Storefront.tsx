@@ -42,6 +42,7 @@ export default function Storefront({ initialCatalog }: { initialCatalog: PublicC
   const [catalog, setCatalog] = useState<PublicCatalog | null>(initialCatalog);
   const [catalogStatus, setCatalogStatus] = useState<'loading' | 'ready' | 'error'>(initialCatalog ? 'ready' : 'loading');
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
+  const [quoteFailures, setQuoteFailures] = useState<string[]>([]);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [customPrice, setCustomPrice] = useState('');
   const [loadingProduct, setLoadingProduct] = useState('');
@@ -100,13 +101,19 @@ export default function Storefront({ initialCatalog }: { initialCatalog: PublicC
     let active = true;
     async function loadPrices() {
       const next: Record<string, Quote> = {};
+      const failures: string[] = [];
       const ids = catalogProducts.filter((product) => product.kind !== 'custom').map((product) => product.id);
       await Promise.all(ids.map(async (productId) => {
-        try { next[productId] = await getQuote(productId, undefined, true); } catch { /* Keep this product unavailable. */ }
+        try { next[productId] = await getQuote(productId, undefined, true); }
+        catch { failures.push(productId); }
       }));
-      if (active) setQuotes(next);
+      if (active) {
+        setQuotes(next);
+        setQuoteFailures(failures);
+      }
     }
     setQuotes({});
+    setQuoteFailures([]);
     if (catalogStatus === 'ready' && currentSetup) loadPrices();
     return () => { active = false; };
   }, [catalogProducts, catalogStatus, currentSetup, getQuote]);
@@ -166,7 +173,7 @@ export default function Storefront({ initialCatalog }: { initialCatalog: PublicC
 
       {notice && <div className="page-notice" role="status" aria-live="polite"><span>{notice}</span><button type="button" onClick={() => setNotice('')} aria-label="Dismiss notice"><X /></button></div>}
 
-      <section id="shop" className="content-section shop-section"><div className="section-title-row"><div><p className="section-kicker">POPULAR TOP-UPS</p><h2>Pick your V-Bucks</h2><p>Live KSh pricing for your selected platform and account region.</p></div><div className="selection-pill"><Gamepad2 /> {platform}<span />{regionMeta.name}</div></div><div className="product-grid">{displayVBucks.map((product) => <ProductCard key={product.id} product={product} quote={quotes[product.id]} platform={platform} regionName={regionMeta.name} popular={product.id === 'vb2400'} catalogReady={catalogStatus === 'ready'} busy={loadingProduct === product.id} onSelect={() => openProduct(product.id)} />)}</div></section>
+      <section id="shop" className="content-section shop-section"><div className="section-title-row"><div><p className="section-kicker">POPULAR TOP-UPS</p><h2>Pick your V-Bucks</h2><p>Live KSh pricing for your selected platform and account region.</p></div><div className="selection-pill"><Gamepad2 /> {platform}<span />{regionMeta.name}</div></div><div className="product-grid">{displayVBucks.map((product) => <ProductCard key={product.id} product={product} quote={quotes[product.id]} quoteFailed={quoteFailures.includes(product.id)} platform={platform} regionName={regionMeta.name} popular={product.id === 'vb2400'} catalogReady={catalogStatus === 'ready'} busy={loadingProduct === product.id} onSelect={() => openProduct(product.id)} />)}</div></section>
 
       <section className="content-section match-section">
         <article className="custom-matcher"><div className="matcher-icon"><Sparkles /></div><p className="section-kicker light">BUYING SOMETHING ELSE?</p><h2>Match any Fortnite store price.</h2><p>Enter the exact price shown on your account. We will find the lowest-cost wallet credit combination that covers it.</p><label className="price-field"><span>{regionMeta.currency || 'Store'} price</span><div><b>{regionMeta.symbol || '—'}</b><input inputMode="decimal" value={customPrice} onChange={(event) => setCustomPrice(event.target.value)} placeholder="0.00" aria-label="Fortnite store price" /></div></label><button className="button button-light" type="button" disabled={catalogStatus !== 'ready' || loadingProduct === 'custom'} onClick={matchCustom}>{loadingProduct === 'custom' ? 'Matching…' : 'Match my credit'} <ArrowRight /></button></article>
@@ -190,9 +197,9 @@ export default function Storefront({ initialCatalog }: { initialCatalog: PublicC
   );
 }
 
-function ProductCard({ product, quote, platform, regionName, popular, catalogReady, busy, onSelect }: { product: ProductDefinition; quote?: Quote; platform: Platform; regionName: string; popular: boolean; catalogReady: boolean; busy: boolean; onSelect: () => void }) {
+function ProductCard({ product, quote, quoteFailed, platform, regionName, popular, catalogReady, busy, onSelect }: { product: ProductDefinition; quote?: Quote; quoteFailed: boolean; platform: Platform; regionName: string; popular: boolean; catalogReady: boolean; busy: boolean; onSelect: () => void }) {
   const disabled = !catalogReady || !quote || quote.soldOut || busy;
-  return <article className={`product-card ${popular ? 'popular' : ''}`}><div className="product-card-top"><span className="product-icon"><span>V</span></span>{popular && <span className="popular-tag">MOST POPULAR</span>}</div><div className="product-amount"><strong>{product.shortName}</strong><span>V-BUCKS</span></div><p>{product.description}</p><div className="product-meta"><span><Gamepad2 /> {platform}</span><span><Globe2 /> {regionName}</span></div><div className="product-price"><small>YOUR PRICE</small><strong>{quote ? money(quote.kesPrice) : catalogReady ? 'Checking…' : 'Unavailable'}</strong></div><button type="button" disabled={disabled} onClick={onSelect}>{busy ? 'Matching…' : quote?.soldOut ? 'Sold out' : quote ? 'Choose top-up' : catalogReady ? 'Checking stock…' : 'Live pricing offline'} <ArrowRight /></button></article>;
+  return <article className={`product-card ${popular ? 'popular' : ''}`}><div className="product-card-top"><span className="product-icon"><span>V</span></span>{popular && <span className="popular-tag">MOST POPULAR</span>}</div><div className="product-amount"><strong>{product.shortName}</strong><span>V-BUCKS</span></div><p>{product.description}</p><div className="product-meta"><span><Gamepad2 /> {platform}</span><span><Globe2 /> {regionName}</span></div><div className="product-price"><small>YOUR PRICE</small><strong>{quote ? money(quote.kesPrice) : quoteFailed || !catalogReady ? 'Unavailable' : 'Checking…'}</strong></div><button type="button" disabled={disabled} onClick={onSelect}>{busy ? 'Matching…' : quote?.soldOut ? 'Sold out' : quote ? 'Choose top-up' : quoteFailed ? 'Price unavailable' : catalogReady ? 'Checking stock…' : 'Live pricing offline'} <ArrowRight /></button></article>;
 }
 
 function DialogShell({ children, titleId, onClose, className = '' }: { children: ReactNode; titleId: string; onClose: () => void; className?: string }) {
