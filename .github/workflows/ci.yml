@@ -12,7 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       NEXT_PUBLIC_CHECKOUT_ENABLED: 'false'
       PAYSTACK_LIVE_ENABLED: 'false'
@@ -28,10 +28,23 @@ jobs:
           node-version: '24'
           cache: npm
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
       - name: Typecheck
         run: npx tsc --noEmit
       - name: Build
         run: npm run build
+      - name: Start local Supabase database
+        run: npx --yes supabase@2.117.0 db start
+      - name: Replay migrations from scratch
+        run: npx --yes supabase@2.117.0 db reset --local --no-seed
+      - name: Lint database functions
+        run: npx --yes supabase@2.117.0 db lint --local --level warning --fail-on error
+      - name: Stop local Supabase database
+        if: always()
+        run: npx --yes supabase@2.117.0 stop --no-backup
       - name: Audit high severity vulnerabilities
         run: npm audit --audit-level=high

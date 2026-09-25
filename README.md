@@ -18,7 +18,8 @@ Fortnite product
   -> current regional store price
   -> enabled wallet SKUs and live owned inventory
   -> lowest permitted KSh route
-  -> order reservation
+  -> immutable checkout quote
+  -> transactional order reservation
   -> Paystack
   -> verified payment event
   -> fulfilment
@@ -32,6 +33,8 @@ Commercial configuration is database-backed:
 - `gift_card_skus` stores wallet-credit denomination SKUs and DROPKE KSh sell prices.
 - `pricing_feed_imports` and `pricing_feed_rows` stage external pricing observations.
 - `supplier_batches` and `inventory_codes` hold DROPKE-owned inventory and provenance.
+- `checkout_quotes` freezes the customer-visible route and KSh amount for checkout.
+- `payment_attempts`, `payment_events` and `fulfilment_jobs` provide payment idempotency and recovery state.
 
 ## Product rules
 
@@ -64,7 +67,7 @@ Commercial configuration is database-backed:
 7. Run `npm run build` and start locally with `npm run dev`.
 8. Open `/admin` and sign in using an allowlisted admin email.
 
-The initial database admin allowlist contains the current owner account. Authorization is enforced server-side and in the database, not by merely hiding the admin page.
+The initial database admin allowlist contains the current owner account. Create that user in Supabase Auth before requesting a magic link. Authorization is enforced server-side and in the database, not by merely hiding the admin page.
 
 ## Payment status
 
@@ -82,8 +85,7 @@ The current Production V2 foundation includes a database-backed catalog and a ro
 
 ```bash
 npm install
-npx tsc --noEmit
-npm run build
+npm run check
 ```
 
 CI is present in `.github/workflows/ci.yml`. GitHub's hosted runner has recently failed before assigning a runner (`runner_id: 0`), so a red run with zero steps is infrastructure-level rather than evidence that the DROPKE build failed.

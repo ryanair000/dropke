@@ -9,16 +9,35 @@ revoke all on function public.admin_summary() from public, anon, authenticated;
 revoke all on function public.admin_batches(integer) from public, anon, authenticated;
 revoke all on function public.admin_orders(integer) from public, anon, authenticated;
 revoke all on function public.admin_audit(integer) from public, anon, authenticated;
-revoke all on function public.admin_update_sku(uuid, integer, integer) from public, anon, authenticated;
-revoke all on function public.admin_create_encrypted_batch(uuid, text, text, numeric, jsonb) from public, anon, authenticated;
+-- These legacy signatures were removed by the preceding service-boundary
+-- migration on clean installs, but may still exist in environments that used
+-- the staged production cutover. Guard them so both histories are replayable.
+do $$
+begin
+  if to_regprocedure('public.admin_update_sku(uuid,integer,integer)') is not null then
+    execute 'revoke all on function public.admin_update_sku(uuid, integer, integer) from public, anon, authenticated';
+  end if;
+  if to_regprocedure('public.admin_create_encrypted_batch(uuid,text,text,numeric,jsonb)') is not null then
+    execute 'revoke all on function public.admin_create_encrypted_batch(uuid, text, text, numeric, jsonb) from public, anon, authenticated';
+  end if;
+end;
+$$;
 
 grant execute on function public.admin_inventory() to service_role;
 grant execute on function public.admin_summary() to service_role;
 grant execute on function public.admin_batches(integer) to service_role;
 grant execute on function public.admin_orders(integer) to service_role;
 grant execute on function public.admin_audit(integer) to service_role;
-grant execute on function public.admin_update_sku(uuid, integer, integer) to service_role;
-grant execute on function public.admin_create_encrypted_batch(uuid, text, text, numeric, jsonb) to service_role;
+do $$
+begin
+  if to_regprocedure('public.admin_update_sku(uuid,integer,integer)') is not null then
+    execute 'grant execute on function public.admin_update_sku(uuid, integer, integer) to service_role';
+  end if;
+  if to_regprocedure('public.admin_create_encrypted_batch(uuid,text,text,numeric,jsonb)') is not null then
+    execute 'grant execute on function public.admin_create_encrypted_batch(uuid, text, text, numeric, jsonb) to service_role';
+  end if;
+end;
+$$;
 
 create or replace function public.admin_create_encrypted_batch(
   p_sku_id uuid,

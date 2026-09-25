@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, ChevronDown, Copy, CreditCard, LockKeyhole, PackageCheck, ShieldCheck, Smartphone, X } from 'lucide-react';
-import { platforms, products, regions } from '@/lib/catalog';
-import type { Platform, PublicOrder, Quote, RegionCode } from '@/types/dropke';
+import { currencySymbol } from '@/lib/catalog';
+import type { Platform, PublicCatalog, PublicOrder, Quote, RegionCode, SafeCheckout } from '@/types/dropke';
 
 const CHECKOUT_ENABLED = process.env.NEXT_PUBLIC_CHECKOUT_ENABLED === 'true';
 const vBuckIds = ['vb800', 'vb2400', 'vb4500', 'vb12500'];
@@ -23,6 +23,7 @@ async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
 export default function Storefront() {
   const [platform, setPlatform] = useState<Platform>('PlayStation');
   const [region, setRegion] = useState<RegionCode>('ZA');
+  const [catalog, setCatalog] = useState<PublicCatalog | null>(null);
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
   const [quote, setQuote] = useState<Quote | null>(null);
   const [customPrice, setCustomPrice] = useState('');
@@ -31,45 +32,107 @@ export default function Storefront() {
   const [delivered, setDelivered] = useState<PublicOrder | null>(null);
   const [trackRef, setTrackRef] = useState('');
   const [trackContact, setTrackContact] = useState('');
+  const [trackToken, setTrackToken] = useState('');
   const [tracked, setTracked] = useState<PublicOrder | null>(null);
 
-  const regionMeta = regions[region];
-  const vBuckProducts = useMemo(() => products.filter((product) => vBuckIds.includes(product.id)), []);
+  const availablePlatforms = useMemo(
+    () => Array.from(new Set((catalog?.setups ?? []).map((setup) => setup.platform))),
+    [catalog],
+  );
+  const availableRegions = useMemo(
+    () => (catalog?.setups ?? []).filter((setup) => setup.platform === platform),
+    [catalog, platform],
+  );
+  const currentSetup = useMemo(
+    () => availableRegions.find((setup) => setup.region === region) ?? availableRegions[0],
+    [availableRegions, region],
+  );
+  const catalogProducts = useMemo(() => catalog?.products ?? [], [catalog]);
+  const vBuckProducts = useMemo(
+    () => catalogProducts.filter((product) => vBuckIds.includes(product.id)),
+    [catalogProducts],
+  );
+  const packProducts = useMemo(
+    () => catalogProducts.filter((product) => packIds.includes(product.id)),
+    [catalogProducts],
+  );
+  const crewProduct = catalogProducts.find((product) => product.id === 'crew');
+  const regionMeta = {
+    name: currentSetup?.regionName ?? region,
+    currency: currentSetup?.storeCurrency ?? '',
+    symbol: currencySymbol(currentSetup?.storeCurrency ?? ''),
+  };
 
-  async function getQuote(productId: string, price?: number) {
+  const getQuote = useCallback(async (productId: string, price?: number, preview = false) => {
     return jsonRequest<Quote>('/api/quote', {
       method: 'POST',
-      body: JSON.stringify({ productId, platform, region, customStorePrice: price }),
+      body: JSON.stringify({ productId, platform, region, customStorePrice: price, preview }),
     });
-  }
+  }, [platform, region]);
+
+  useEffect(() => {
+    let active = true;
+    jsonRequest<PublicCatalog>('/api/catalog')
+      .then((next) => {
+        if (!active) return;
+        setCatalog(next);
+        const preferred = next.setups.find((setup) => setup.platform === 'PlayStation' && setup.region === 'ZA')
+          ?? next.setups[0];
+        if (preferred) {
+          setPlatform(preferred.platform);
+          setRegion(preferred.region);
+        }
+      })
+      .catch(() => active && setNotice('The storefront catalog is temporarily unavailable.'));
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (availableRegions.length && !availableRegions.some((setup) => setup.region === region)) {
+      setRegion(availableRegions[0].region);
+    }
+  }, [availableRegions, region]);
 
   useEffect(() => {
     let active = true;
     async function load() {
       const next: Record<string, Quote> = {};
-      await Promise.all([...vBuckIds, 'crew', ...packIds].map(async (productId) => {
+      const ids = catalogProducts.filter((product) => product.kind !== 'custom').map((product) => product.id);
+      await Promise.all(ids.map(async (productId) => {
         try {
-          next[productId] = await getQuote(productId);
+          next[productId] = await getQuote(productId, undefined, true);
         } catch {
           // Prices stay unavailable until the backend is configured.
         }
       }));
       if (active) setQuotes(next);
     }
-    load();
+    if (catalog && currentSetup) load();
     return () => { active = false; };
-  }, [platform, region]);
+  }, [catalog, catalogProducts, currentSetup, getQuote]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('payment') !== 'paystack') return;
-    const cached = sessionStorage.getItem('dropke:last-order');
-    if (!cached) return;
+    const ref = params.get('reference') || params.get('trxref');
+    if (!ref) return;
+    const cached = sessionStorage.getItem('dropke:orders');
+    if (!cached) {
+      setNotice(`Payment return received for ${ref}. Use Track Order to check its status.`);
+      return;
+    }
     try {
-      const last = JSON.parse(cached) as { ref: string; email: string };
-      const ref = params.get('reference') || params.get('trxref') || last.ref;
+      const orders = JSON.parse(cached) as Record<string, { email: string; deliveryToken: string }>;
+      const checkout = orders[ref];
+      if (!checkout) {
+        setNotice(`Payment return received for ${ref}. Use Track Order to check its status.`);
+        return;
+      }
       jsonRequest<{ status: string }>(`/api/paystack/verify/${encodeURIComponent(ref)}`)
-        .then(() => jsonRequest<PublicOrder>(`/api/orders/${encodeURIComponent(last.ref)}?contact=${encodeURIComponent(last.email)}`))
+        .then(() => jsonRequest<PublicOrder>(`/api/orders/${encodeURIComponent(ref)}`, {
+          method: 'POST',
+          body: JSON.stringify({ contact: checkout.email, deliveryToken: checkout.deliveryToken }),
+        }))
         .then((order) => {
           setDelivered(order);
           setNotice('Payment confirmed. Your DROPKE credit is ready.');
@@ -114,7 +177,10 @@ export default function Storefront() {
     setNotice('');
     setTracked(null);
     try {
-      setTracked(await jsonRequest<PublicOrder>(`/api/orders/${encodeURIComponent(trackRef.trim())}?contact=${encodeURIComponent(trackContact.trim())}`));
+      setTracked(await jsonRequest<PublicOrder>(`/api/orders/${encodeURIComponent(trackRef.trim())}`, {
+        method: 'POST',
+        body: JSON.stringify({ contact: trackContact.trim(), deliveryToken: trackToken.trim() || undefined }),
+      }));
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Order not found.');
     }
@@ -136,7 +202,7 @@ export default function Storefront() {
           <h2>Pay in KSh. Play on your account.</h2>
           <p className="hero-body">Choose what you want in Fortnite. DROPKE matches the wallet credit for your platform and account region. You redeem it yourself.</p>
           <div className="hero-actions"><a className="primary-button" href="#vbucks">SHOP V-BUCKS</a><a className="secondary-button" href="#how">HOW IT WORKS</a></div>
-          <div className="platform-line">PlayStation · Xbox · Nintendo · PC</div>
+        <div className="platform-line">{availablePlatforms.length ? availablePlatforms.join(' · ') : 'Loading supported platforms…'}</div>
         </div>
         <div className="hero-stack" aria-label="V-Bucks denominations">
           {vBuckProducts.map((product, index) => <div className="hero-chip" key={product.id} style={{ transform: `translateX(${index * 8}px)` }}><span>{product.shortName}</span><small>V-BUCKS</small></div>)}
@@ -145,8 +211,8 @@ export default function Storefront() {
 
       <section className="setup-shell">
         <div><span className="setup-label">YOUR SETUP</span><strong>Prices and credit adapt to your account.</strong></div>
-        <label><span>Platform</span><select value={platform} onChange={(event) => setPlatform(event.target.value as Platform)}>{platforms.map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={15} /></label>
-        <label><span>Account region</span><select value={region} onChange={(event) => setRegion(event.target.value as RegionCode)}>{Object.values(regions).map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select><ChevronDown size={15} /></label>
+        <label><span>Platform</span><select value={platform} disabled={!availablePlatforms.length} onChange={(event) => setPlatform(event.target.value as Platform)}>{availablePlatforms.map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={15} /></label>
+        <label><span>Account region</span><select value={region} disabled={!availableRegions.length} onChange={(event) => setRegion(event.target.value as RegionCode)}>{availableRegions.map((item) => <option key={item.region} value={item.region}>{item.regionName}</option>)}</select><ChevronDown size={15} /></label>
         <a href="#faq">How do I check my region?</a>
       </section>
 
@@ -157,22 +223,21 @@ export default function Storefront() {
         <div className="product-grid">
           {vBuckProducts.map((product) => {
             const current = quotes[product.id];
-            return <article className={`product-card ${product.id === 'vb2400' ? 'popular' : ''}`} key={product.id}>{product.id === 'vb2400' && <span className="popular-tag">MOST POPULAR</span>}<div className="coin-mark">V</div><h3>{product.shortName}</h3><span>V-BUCKS</span><p>{product.description}</p><strong>{money(current?.kesPrice)}</strong><small>{platform} · {regionMeta.name}</small><button disabled={loading || current?.soldOut} onClick={() => openProduct(product.id)}>{current?.soldOut ? 'SOLD OUT' : 'BUY NOW'}</button></article>;
+            return <article className={`product-card ${product.id === 'vb2400' ? 'popular' : ''}`} key={product.id}>{product.id === 'vb2400' && <span className="popular-tag">MOST POPULAR</span>}<div className="coin-mark">V</div><h3>{product.shortName}</h3><span>V-BUCKS</span><p>{product.description}</p><strong>{money(current?.kesPrice)}</strong><small>{platform} · {regionMeta.name}</small><button disabled={loading || !current || current.soldOut} onClick={() => openProduct(product.id)}>{current?.soldOut ? 'SOLD OUT' : current ? 'BUY NOW' : 'UNAVAILABLE'}</button></article>;
           })}
         </div>
       </section>
 
       <section className="split-feature section-shell">
         <article className="custom-card"><p className="eyebrow dark">OTHER FORTNITE PURCHASE</p><h2>Buying a skin, pack or something else?</h2><p>Enter the price shown in your Fortnite store and DROPKE will find the wallet credit that covers it.</p><label><span>{regionMeta.currency} store price</span><div><b>{regionMeta.symbol}</b><input inputMode="decimal" value={customPrice} onChange={(event) => setCustomPrice(event.target.value)} placeholder="0.00" /></div></label><button className="primary-button" onClick={matchCustom}>FIND MY CREDIT</button></article>
-        <article id="crew" className="crew-card"><p className="eyebrow">FORTNITE CREW</p><h2>Monthly Crew, without sharing your password.</h2><p>We match the credit you need. You redeem the wallet code and subscribe from your own account.</p><strong>{money(quotes.crew?.kesPrice)}</strong><button disabled={quotes.crew?.soldOut} onClick={() => openProduct('crew')}>VIEW CREW</button></article>
+        {crewProduct && <article id="crew" className="crew-card"><p className="eyebrow">FORTNITE CREW</p><h2>Monthly Crew, without sharing your password.</h2><p>We match the credit you need. You redeem the wallet code and subscribe from your own account.</p><strong>{money(quotes.crew?.kesPrice)}</strong><button disabled={!quotes.crew || quotes.crew.soldOut} onClick={() => openProduct('crew')}>VIEW CREW</button></article>}
       </section>
 
       <section id="packs" className="section-shell">
         <div className="section-heading"><div><p className="eyebrow dark">FORTNITE PACKS</p><h2>Pack-ready credit</h2></div><p>No account handover. Ever.</p></div>
-        <div className="pack-grid">{packIds.map((id, index) => {
-          const product = products.find((candidate) => candidate.id === id)!;
-          const current = quotes[id];
-          return <article className="pack-card" key={id}><div className={`pack-art art-${index + 1}`}><span>FORTNITE</span></div><div><h3>{product.name}</h3><p>{product.description}</p><strong>{money(current?.kesPrice)}</strong><button disabled={current?.soldOut} onClick={() => openProduct(id)}>VIEW MATCH</button></div></article>;
+        <div className="pack-grid">{packProducts.map((product, index) => {
+          const current = quotes[product.id];
+          return <article className="pack-card" key={product.id}><div className={`pack-art art-${index + 1}`}><span>FORTNITE</span></div><div><h3>{product.name}</h3><p>{product.description}</p><strong>{money(current?.kesPrice)}</strong><button disabled={!current || current.soldOut} onClick={() => openProduct(product.id)}>VIEW MATCH</button></div></article>;
         })}</div>
       </section>
 
@@ -183,19 +248,19 @@ export default function Storefront() {
 
       <section className="trust-section section-shell"><div><LockKeyhole size={30} /><p className="eyebrow dark">ACCOUNT SAFETY</p><h2>Your account stays yours.</h2><p>DROPKE never needs your PlayStation, Xbox, Nintendo or Epic password. We supply credit. You redeem it.</p></div><div className="trust-list"><span><Check /> Region checked before payment</span><span><Check /> Customer redeems the code</span><span><Check /> Real codes encrypted at rest</span><span><Check /> Order tracking requires matching contact</span></div></section>
 
-      <section id="track" className="track-section section-shell"><div><p className="eyebrow dark">TRACK ORDER</p><h2>Find your DROPKE order</h2><p>Use the order reference plus the same email or phone used at checkout.</p></div><form onSubmit={trackOrder}><input value={trackRef} onChange={(event) => setTrackRef(event.target.value)} placeholder="DRP-XXXXXXXXXXXX" required /><input value={trackContact} onChange={(event) => setTrackContact(event.target.value)} placeholder="Checkout email or phone" required /><button>TRACK ORDER</button></form>{tracked && <OrderResult order={tracked} />}</section>
+      <section id="track" className="track-section section-shell"><div><p className="eyebrow dark">TRACK ORDER</p><h2>Find your DROPKE order</h2><p>Use the order reference plus the same email or phone used at checkout. Add the private delivery token to reveal fulfilled codes.</p></div><form onSubmit={trackOrder}><input value={trackRef} onChange={(event) => setTrackRef(event.target.value)} placeholder="DRP-XXXXXXXXXXXX" required /><input value={trackContact} onChange={(event) => setTrackContact(event.target.value)} placeholder="Checkout email or phone" required /><input value={trackToken} onChange={(event) => setTrackToken(event.target.value)} placeholder="Delivery token (optional)" /><button>TRACK ORDER</button></form>{tracked && <OrderResult order={tracked} />}</section>
 
       <section id="faq" className="faq section-shell"><div className="section-heading"><div><p className="eyebrow dark">FAQ</p><h2>Before you buy</h2></div></div><details><summary>Why does account region matter?</summary><p>Wallet codes are tied to a platform store and region. Choose the region set on your gaming account, not simply your physical location.</p></details><details><summary>Do you need my gaming password?</summary><p>No. DROPKE never asks for your gaming account password. You redeem the wallet credit yourself.</p></details><details><summary>How is my credit selected?</summary><p>The matcher finds the smallest supported wallet-credit combination that covers the selected Fortnite store price, then shows the expected balance left over.</p></details></section>
 
       <footer><div><a className="brand" href="#top">DROP<span>KE</span></a><p>Top up. Drop in.</p></div><div><strong>Shop</strong><a href="#vbucks">V-Bucks</a><a href="#crew">Crew</a><a href="#packs">Packs</a></div><div><strong>Support</strong><a href="#track">Track Order</a><a href="#faq">FAQ</a></div><div><strong>Legal</strong><span>Independent retailer. Not affiliated with Epic Games.</span></div></footer>
 
-      {quote && <CheckoutModal quote={quote} customStorePrice={quote.productId === 'custom' ? quote.storePrice : undefined} onClose={() => setQuote(null)} onDelivered={setDelivered} />}
+      {quote && <CheckoutModal quote={quote} onClose={() => setQuote(null)} />}
       {delivered && <DeliveryModal order={delivered} onClose={() => setDelivered(null)} />}
     </main>
   );
 }
 
-function CheckoutModal({ quote, customStorePrice, onClose }: { quote: Quote; customStorePrice?: number; onClose: () => void; onDelivered: (order: PublicOrder) => void }) {
+function CheckoutModal({ quote, onClose }: { quote: Quote; onClose: () => void }) {
   const [confirmed, setConfirmed] = useState(false);
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -211,12 +276,16 @@ function CheckoutModal({ quote, customStorePrice, onClose }: { quote: Quote; cus
 
   async function pay() {
     if (!CHECKOUT_ENABLED) { setError('Payments are intentionally disabled while DROPKE completes payment setup.'); return; }
+    if (!quote.quoteId) { setError('This quote is no longer current. Close checkout and refresh the price.'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || phone.replace(/\D/g, '').length < 9) { setError('Enter a valid email and phone number.'); return; }
     setBusy(true); setError('');
     try {
-      const order = await jsonRequest<{ ref: string }>('/api/orders', { method: 'POST', body: JSON.stringify({ productId: quote.productId, platform: quote.platform, region: quote.region, customStorePrice, email, phone }) });
+      const order = await jsonRequest<{ ref: string; deliveryToken: string; quote: SafeCheckout }>('/api/orders', { method: 'POST', body: JSON.stringify({ quoteId: quote.quoteId, email, phone }) });
       setOrderRef(order.ref);
-      sessionStorage.setItem('dropke:last-order', JSON.stringify({ ref: order.ref, email, phone }));
+      const cached = sessionStorage.getItem('dropke:orders');
+      const orders = cached ? JSON.parse(cached) as Record<string, { email: string; deliveryToken: string }> : {};
+      orders[order.ref] = { email: email.trim().toLowerCase(), deliveryToken: order.deliveryToken };
+      sessionStorage.setItem('dropke:orders', JSON.stringify(orders));
       const payment = await jsonRequest<{ authorizationUrl: string }>('/api/paystack/initialize', { method: 'POST', body: JSON.stringify({ orderRef: order.ref }) });
       window.location.assign(payment.authorizationUrl);
     } catch (reason) {

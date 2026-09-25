@@ -35,6 +35,8 @@ export type QuoteSku = {
 };
 
 export type Quote = {
+  quoteId?: string;
+  expiresAt?: string;
   productId: string;
   productName: string;
   platform: Platform;
@@ -68,6 +70,19 @@ export type PublicOrder = {
   createdAt: string;
   deliveredAt?: string;
   codes?: string[];
+};
+
+export type SafeCheckout = {
+  productName: string;
+  platform: Platform;
+  regionName: string;
+  storePrice: number;
+  matchedCredit: number;
+  balanceRemaining: number;
+  kesPrice: number;
+  creditLabel: string;
+  cardBreakdown: string[];
+  soldOut: boolean;
 };
 
 export type StockRow = {

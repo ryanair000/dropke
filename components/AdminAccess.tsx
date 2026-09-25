@@ -11,6 +11,7 @@ export default function AdminAccess() {
   const [signedIn, setSignedIn] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [email, setEmail] = useState(OWNER_ADMIN_EMAIL);
 
   useEffect(() => {
     let active = true;
@@ -41,14 +42,14 @@ export default function AdminAccess() {
     setMessage('');
     try {
       const { error } = await getBrowserSupabase().auth.signInWithOtp({
-        email: OWNER_ADMIN_EMAIL,
+        email: email.trim().toLowerCase(),
         options: {
           emailRedirectTo: `${window.location.origin}/admin`,
-          shouldCreateUser: true,
+          shouldCreateUser: false,
         },
       });
       if (error) throw error;
-      setMessage('Secure sign-in link sent to the owner email. Open that email to continue.');
+      setMessage('If this address is an existing authorized account, a secure sign-in link has been sent.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not send the secure sign-in link.');
     } finally {
@@ -69,7 +70,7 @@ export default function AdminAccess() {
         <p className="eyebrow dark">DROPKE ADMIN</p>
         <h1>Secure owner access</h1>
         <p>Inventory, pricing, orders and audit data are available only after Supabase verifies the allowlisted owner email.</p>
-        <div className="admin-security-row"><span>Authorized email</span><strong>{OWNER_ADMIN_EMAIL}</strong></div>
+        <label className="field"><span>Authorized admin email</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
         <button type="button" disabled={busy} onClick={sendSecureLink}><Mail size={16} /> {busy ? 'SENDING…' : 'EMAIL SECURE SIGN-IN LINK'}</button>
         {message && <div className="admin-message">{message}</div>}
         <a href="/"><ArrowLeft size={15} /> Return to store</a>

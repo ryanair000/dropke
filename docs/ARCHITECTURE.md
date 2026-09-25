@@ -2,7 +2,7 @@
 
 ## Storefront
 
-The customer chooses a Fortnite product, platform and account region. The quote engine converts the Fortnite store price into the smallest supported wallet-credit combination that covers the purchase, then calculates the DROPKE selling price from the relevant SKUs.
+The customer chooses a Fortnite product, platform and account region. The quote engine converts the Fortnite store price into the lowest-cost supported wallet-credit combination that covers the purchase, then stores a short-lived immutable checkout quote. Order creation consumes that exact snapshot, so the amount shown to the customer is the amount reserved and sent to Paystack.
 
 `product -> platform -> region -> wallet denominations -> KSh price`
 
@@ -16,7 +16,7 @@ The frontend never chooses a redeemable code and never receives inventory intern
 - `reserved`
 - `sold`
 
-Reservations are performed inside Postgres with row locking so two orders cannot receive the same code.
+Order insertion, item creation and reservations run in one Postgres transaction with row locking, so partial orders cannot survive and two orders cannot receive the same code.
 
 ## Orders
 
@@ -26,7 +26,7 @@ Typical lifecycle:
 
 `awaiting_payment -> paid_pending_fulfilment -> delivered`
 
-A payment can be successful while fulfilment requires attention. The system must never label a verified payment as failed simply because stock fulfilment encountered a problem.
+A payment can be successful while fulfilment requires attention. Atomic finalization either assigns the complete code set or leaves the order in `paid_pending_fulfilment` and creates a durable recovery job.
 
 ## Admin
 
@@ -34,4 +34,4 @@ Admin access uses Supabase Auth plus an explicit email allowlist. All admin APIs
 
 ## Paystack
 
-The backend initializes Paystack transactions, verifies amount/currency/reference, authenticates webhooks using HMAC-SHA512 and performs idempotent fulfilment. The Paystack secret never reaches the browser.
+The backend initializes Paystack transactions, verifies amount/currency/reference, authenticates webhooks using HMAC-SHA512 and performs idempotent fulfilment. Payment attempts and webhook/verification events are persisted without storing raw card payloads. The Paystack secret never reaches the browser.

@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint . --max-warnings=0",
+    "test": "tsx --conditions=react-server --test tests/**/*.test.ts",
+    "check": "npm run lint && npm run test && npx tsc --noEmit && npm run build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
@@ -22,6 +24,7 @@
     "@types/react-dom": "^19.2.2",
     "eslint": "^8.57.1",
     "eslint-config-next": "15.5.25",
+    "tsx": "^4.20.6",
     "typescript": "^5.7.2"
   },
   "overrides": {

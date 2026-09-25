@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'DROPKE | Fortnite credit for Kenyan gamers',
-  description: 'Fortnite credit for PlayStation, Xbox, Nintendo and PC. Pay in KSh and redeem on your own account.',
+    description: 'Fortnite credit for supported gaming platforms and account regions. Pay in KSh and redeem on your own account.',
   applicationName: 'DROPKE',
   robots: { index: false, follow: false },
   openGraph: {

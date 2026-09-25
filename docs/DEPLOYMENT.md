@@ -13,7 +13,8 @@ The Production V2 schema separates:
 - staged pricing-feed imports
 - orders, payments and encrypted fulfilment inventory
 
-Configure Supabase email authentication after the schema is in place. The admin UI uses passwordless email sign-in.
+Configure Supabase email authentication after the schema is in place. The admin UI uses passwordless email sign-in. Disable public email signups in the hosted project because customer accounts are not part of this release.
+Create each intended administrator in Supabase Auth and add the same normalized address to `public.admin_users`; the admin form will not auto-create accounts.
 
 ## 2. Vercel
 
@@ -65,6 +66,8 @@ Before live mode, test at minimum:
 - inventory exhaustion
 - payment success with fulfilment failure
 - retry without duplicate code delivery
+
+Monitor `fulfilment_jobs` for `pending` or `manual` records. These represent verified payments that need an automatic retry or operator intervention; do not treat them as failed payments.
 
 ## 6. Production launch gate
 

@@ -10,12 +10,18 @@ export async function GET(request: Request) {
     const { error: releaseError } = await supabase.rpc('release_expired_inventory');
     if (releaseError) throw releaseError;
 
-    const [{ data: stock, error: stockError }, { data: orders, error: ordersError }] = await Promise.all([
+    const [
+      { data: stock, error: stockError },
+      { data: orders, error: ordersError },
+      { data: recoveryJobs, error: recoveryError },
+    ] = await Promise.all([
       supabase.from('sku_stock').select('available_count,reserved_count,sold_count,low_stock_threshold'),
       supabase.from('orders').select('status'),
+      supabase.from('fulfilment_jobs').select('status').in('status', ['pending', 'manual']),
     ]);
     if (stockError) throw stockError;
     if (ordersError) throw ordersError;
+    if (recoveryError) throw recoveryError;
 
     const rows = stock ?? [];
     const orderRows = orders ?? [];
@@ -27,6 +33,7 @@ export async function GET(request: Request) {
       lowStock: rows.filter((row) => Number(row.available_count ?? 0) <= Number(row.low_stock_threshold ?? 0)).length,
       orderCount: orderRows.length,
       paidPending: orderRows.filter((order) => order.status === 'paid_pending_fulfilment').length,
+      recoveryJobs: recoveryJobs?.length ?? 0,
       encryptionReady: inventoryEncryptionReady(),
       paystackMode: paystackMode(),
     }, { headers: { 'Cache-Control': 'no-store' } });

@@ -197,3 +197,42 @@ export async function buildQuote(input: {
     soldOut: false,
   };
 }
+
+export async function createCheckoutQuote(input: {
+  productId: string;
+  platform: Platform;
+  region: RegionCode;
+  customStorePrice?: number;
+}): Promise<Quote> {
+  const quote = await buildQuote(input);
+  if (quote.soldOut) return quote;
+
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  const { data, error } = await getServiceClient()
+    .from('checkout_quotes')
+    .insert({
+      product_id: quote.productId,
+      product_name: quote.productName,
+      platform: quote.platform,
+      region_code: quote.region,
+      region_name: quote.regionName,
+      currency: quote.currency,
+      wallet_currency: quote.walletCurrency,
+      store_price: quote.storePrice,
+      matched_credit: quote.matchedCredit,
+      balance_remaining: quote.balanceRemaining,
+      kes_price: quote.kesPrice,
+      credit_label: quote.creditLabel,
+      card_breakdown: quote.cardBreakdown,
+      sku_selections: quote.skuSelections,
+      expires_at: expiresAt,
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    throw new Error(`QUOTE_SNAPSHOT_FAILED:${error?.message ?? 'missing quote id'}`);
+  }
+
+  return { ...quote, quoteId: String(data.id), expiresAt };
+}

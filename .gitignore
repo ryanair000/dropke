@@ -8,6 +8,7 @@ out/
 .DS_Store
 .vercel/
 coverage/
+*.tsbuildinfo
 *.pem
 *.key
 inventory-export*.csv

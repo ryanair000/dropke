@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Boxes, KeyRound, LockKeyhole, LogOut, PackagePlus, RefreshCw, ShieldCheck, ShoppingBag } from 'lucide-react';
-import { OWNER_ADMIN_EMAIL } from '@/lib/config';
+import { OWNER_ADMIN_EMAIL as DEFAULT_ADMIN_EMAIL } from '@/lib/config';
 import { getBrowserSupabase } from '@/lib/supabase/browser';
 
 async function api<T>(path: string, token: string, init?: RequestInit): Promise<T> {
@@ -13,14 +13,15 @@ async function api<T>(path: string, token: string, init?: RequestInit): Promise<
 }
 
 type Stock = { id: string; sku: string; platform: string; region_code: string; region_name: string; currency: string; denomination: number; sell_price_kes: number; low_stock_threshold: number; available_count: number; reserved_count: number; sold_count: number };
-type Summary = { skuCount: number; available: number; reserved: number; sold: number; lowStock: number; orderCount: number; paidPending: number; encryptionReady: boolean; paystackMode: string };
+type Summary = { skuCount: number; available: number; reserved: number; sold: number; lowStock: number; orderCount: number; paidPending: number; recoveryJobs: number; encryptionReady: boolean; paystackMode: string };
 type Batch = { id: string; batch_ref: string; sku_id: string; supplier_name: string; supplier_ref?: string; unit_cost_kes: number; quantity: number; created_at: string; created_by: string };
 type Order = { ref: string; product_name: string; platform: string; region_name: string; kes_price: number; payment_status: string; status: string; created_at: string };
 type Audit = { id: string; actor_email: string; action: string; resource: string; details: Record<string, unknown>; created_at: string };
 
 export default function AdminDashboard() {
   const [token, setToken] = useState('');
-  const [email, setEmail] = useState(OWNER_ADMIN_EMAIL);
+  const [email, setEmail] = useState(DEFAULT_ADMIN_EMAIL);
+  const OWNER_ADMIN_EMAIL = email || 'Authorized admin';
   const [message, setMessage] = useState('');
   const [summary, setSummary] = useState<Summary | null>(null);
   const [stock, setStock] = useState<Stock[]>([]);
@@ -40,18 +41,29 @@ export default function AdminDashboard() {
   useEffect(() => {
     try {
       const supabase = getBrowserSupabase();
-      supabase.auth.getSession().then(({ data }) => { if (data.session?.access_token) setToken(data.session.access_token); });
-      const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => setToken(session?.access_token ?? ''));
+      supabase.auth.getSession().then(({ data }) => {
+        if (data.session?.access_token) setToken(data.session.access_token);
+        if (data.session?.user.email) setEmail(data.session.user.email);
+      });
+      const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+        setToken(session?.access_token ?? '');
+        setEmail(session?.user.email ?? '');
+      });
       return () => listener.subscription.unsubscribe();
     } catch { setMessage('Supabase browser authentication is not configured yet.'); }
   }, []);
+  // loadAll intentionally follows token changes; its other dependencies are stable state setters.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (token) loadAll(); }, [token]);
   useEffect(() => { if (selected) { setPrice(String(selected.sell_price_kes)); setThreshold(String(selected.low_stock_threshold)); } }, [selected]);
 
   async function sendMagicLink(event: React.FormEvent) {
     event.preventDefault(); setMessage('');
     try {
-      const { error } = await getBrowserSupabase().auth.signInWithOtp({ email, options: { emailRedirectTo: `${window.location.origin}/admin` } });
+      const { error } = await getBrowserSupabase().auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: `${window.location.origin}/admin`, shouldCreateUser: false },
+      });
       if (error) throw error;
       setMessage('Magic sign-in link sent. Check your email.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not send sign-in link.'); }
